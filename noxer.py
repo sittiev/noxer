@@ -11,21 +11,154 @@ import requests
 from OpenSSL import crypto
 from requests.exceptions import ConnectionError
 
-noxer = """\033[38;5;208m
- __    _  _______  __   __  _______  ______
-|  |  | ||       ||  |_|  ||       ||    _ |
-|   |_| ||   _   ||       ||    ___||   | ||
-|       ||  | |  ||       ||   |___ |   |_||_
-|  _    ||  |_|  | |     | |    ___||    __  |
-| | |   ||       ||   _   ||   |___ |   |  | |
-|_|  |__||_______||__| |__||_______||___|  |_|
-____________NoX Player for GEEKZ______________
-           Github: AggressiveUser
-                                    Ver-1.22_β
-\033[0m"""
-print(noxer)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRIPTS_DIR = os.path.join(SCRIPT_DIR, "Fripts")
 
-# Yaar Haryane Te - PANDAT JI :)
+
+# ── Nox path ────────────────────────────────────
+
+
+def get_nox_path():
+    return find_nox_installation_path()
+
+
+def find_nox_installation_path():
+    for process in psutil.process_iter(["pid", "name", "exe"]):
+        if "Nox.exe" in process.info["name"]:
+            return os.path.dirname(process.info["exe"])
+    return None
+
+
+# ── ADB helpers ─────────────────────────────────
+
+
+def adb_cmd(*args):
+    path = get_nox_path()
+    if not path:
+        return "", "Nox not found", 1
+    cmd = f'"{path}\\nox_adb.exe"'
+    for a in args:
+        cmd += f" {a}"
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return r.stdout.strip(), r.stderr.strip(), r.returncode
+
+
+def adb_shell(cmd_str):
+    out, _, _ = adb_cmd("shell", cmd_str)
+    return out
+
+
+# ── Status checks ───────────────────────────────
+
+
+def check_nox_running():
+    return get_nox_path() is not None
+
+
+def check_adb_connected():
+    try:
+        out, _, rc = adb_cmd("devices")
+        return rc == 0 and "device" in out
+    except Exception:
+        return False
+
+
+def check_frida_host():
+    try:
+        v = subprocess.check_output(
+            "frida --version 2>&1", shell=True, text=True, stderr=subprocess.STDOUT
+        )
+        m = re.search(r"(\d+\.\d+\.\d+)", v.strip())
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def check_frida_server_installed():
+    if not check_adb_connected():
+        return False
+    out = adb_shell("test -f /data/local/tmp/FridaServer && echo 1 || echo 0")
+    return "1" in out
+
+
+def check_frida_server_running():
+    if not check_adb_connected():
+        return False
+    out = adb_shell("pgrep -f FridaServer 2>/dev/null || echo ''")
+    return bool(out.strip())
+
+
+def check_proxy():
+    if not check_adb_connected():
+        return False
+    out = adb_shell("settings get global http_proxy")
+    return out.strip() not in ("", ":0", "null")
+
+
+# ── ANSI colors ─────────────────────────────────
+
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+ORANGE = "\033[38;5;208m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+def badge(label, ok, width=26):
+    dot = f"{GREEN}\u25cf{RESET}" if ok else f"{RED}\u25cb{RESET}"
+    visible = 2 + len(label)
+    pad = max(0, width - visible)
+    return f"{dot} {label}{' ' * pad}"
+
+
+# ── Render ──────────────────────────────────────
+
+W = 62
+COL = 26
+
+
+def render_dashboard():
+    os.system("cls" if os.name == "nt" else "clear")
+
+    nox_ok = check_nox_running()
+    adb_ok = check_adb_connected() if nox_ok else False
+    fv = check_frida_host()
+    fv_label = f"Frida (host) {fv}" if fv else "Frida (host)"
+    fi_ok = check_frida_server_installed() if adb_ok else False
+    fr_ok = check_frida_server_running() if adb_ok else False
+    pr_ok = check_proxy() if adb_ok else False
+
+    hdr = f"{ORANGE}{BOLD}NOXER v1.22\u03b2{RESET}"
+    hdr_visible = 12
+
+    print()
+    print(f"  \u250c{'':-^{W - 4}}\u2510")
+    print(f"  \u2502  {hdr}{'':>{W - 6 - hdr_visible}}\u2502")
+    print(f"  \u2502{'':^{W - 4}}\u2502")
+    print(f"  \u2502  {badge('Nox', nox_ok, COL)}{badge('ADB', adb_ok, COL)}    \u2502")
+    print(f"  \u2502  {badge(fv_label, fv is not None, COL)}{badge('FridaSrv', fi_ok, COL)}    \u2502")
+    print(f"  \u2502  {badge('FridaSrv run', fr_ok, COL)}{badge('Proxy', pr_ok, COL)}    \u2502")
+    print(f"  \u2502{'':^{W - 4}}\u2502")
+    print(f"  \u2502{'':^{W - 4}}\u2502")
+    print(f"  \u2502  {ORANGE}{BOLD}MENU{RESET}{'':>{W - 12}}\u2502")
+    print(f"  \u2502{'':^{W - 4}}\u2502")
+
+    items = [
+        ("1", "Windows Tools"),
+        ("2", "NOX Player Options"),
+        ("3", "Frida-Tools Options"),
+        ("4", "Exit"),
+    ]
+    for num, label in items:
+        pad = W - 13 - len(label)
+        print(f"  \u2502    {ORANGE}{num}{RESET}. {label}{' ' * pad}  \u2502")
+
+    print(f"  \u2502{'':^{W - 4}}\u2502")
+    print(f"  \u2514{'':-^{W - 4}}\u2518")
+
+
+# ── Original functions ──────────────────────────
 
 
 def is_tool_installed(tool):
@@ -40,17 +173,10 @@ def install_tool(tool):
     subprocess.run(["pip", "install", tool])
 
 
-def find_nox_installation_path():
-    for process in psutil.process_iter(["pid", "name", "exe"]):
-        if "Nox.exe" in process.info["name"]:
-            return os.path.dirname(process.info["exe"])
-    return None
-
-
-# ADB Default Port of Nox Player : 62001,62025,62026
 def connect_to_nox_adb(ip="127.0.0.1", port=62001):
-    if nox_installation_path:
-        adb_command = f'"{nox_installation_path}\\nox_adb.exe" connect {ip}:{port}'
+    path = get_nox_path()
+    if path:
+        adb_command = f'"{path}\\nox_adb.exe" connect {ip}:{port}'
         result = subprocess.run(adb_command, shell=True, text=True, capture_output=True)
         return result.stdout.strip()
     else:
@@ -61,6 +187,7 @@ def burpsuite_cacert():
     cert_url = "http://127.0.0.1:8080/cert"
     input_der_file = "cacert.der"
     output_pem_file = "9a5ba575.0"
+    path = get_nox_path()
 
     try:
         response = requests.get(cert_url)
@@ -78,13 +205,13 @@ def burpsuite_cacert():
                 pem_data = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
                 pem_file.write(pem_data)
 
-            os.system(f'"{nox_installation_path}\\nox_adb.exe" root')
-            os.system(f'"{nox_installation_path}\\nox_adb.exe" remount')
+            os.system(f'"{path}\\nox_adb.exe" root')
+            os.system(f'"{path}\\nox_adb.exe" remount')
             os.system(
-                f'"{nox_installation_path}\\nox_adb.exe" push {output_pem_file} /system/etc/security/cacerts/'
+                f'"{path}\\nox_adb.exe" push {output_pem_file} /system/etc/security/cacerts/'
             )
             os.system(
-                f'"{nox_installation_path}\\nox_adb.exe" shell chmod 644 /system/etc/security/cacerts/{output_pem_file}'
+                f'"{path}\\nox_adb.exe" shell chmod 644 /system/etc/security/cacerts/{output_pem_file}'
             )
             print(
                 "\x1b[1;32mBurpSuite Certificate Install Successfully in Nox Player\x1b[0m"
@@ -104,19 +231,9 @@ def burpsuite_cacert():
 
 
 def open_adb_shell_from_nox():
-    if nox_installation_path:
-        adb_shell_command = f'"{nox_installation_path}\\nox_adb.exe" shell -t su'
-        print(
-            "\x1b[1;32mOpening ADB Shell. Type 'exit' to return to the main menu.\x1b[0m"
-        )
-        subprocess.run(adb_shell_command, shell=True)
-    else:
-        print("\033[91mNox player not installed.\033[0m")
-
-
-def open_adb_shell_from_nox():
-    if nox_installation_path:
-        adb_shell_command = f'"{nox_installation_path}\\nox_adb.exe" shell -t su'
+    path = get_nox_path()
+    if path:
+        adb_shell_command = f'"{path}\\nox_adb.exe" shell -t su'
         print(
             "\x1b[1;32mOpening ADB Shell. Type 'exit' to return to the main menu.\x1b[0m"
         )
@@ -133,10 +250,9 @@ def frida_server_install():
     if re.search(r"(\d+\.\d+\.\d+)", frida_version_output):
         frida_version = re.search(r"(\d+\.\d+\.\d+)", frida_version_output).group(1)
         print(f"Frida-Tools Version: {frida_version}")
+        path = get_nox_path()
 
-        noxarch = (
-            f'"{nox_installation_path}\\nox_adb.exe"  shell getprop ro.product.cpu.abi'
-        )
+        noxarch = f'"{path}\\nox_adb.exe"  shell getprop ro.product.cpu.abi'
         noxarchre = subprocess.run(
             noxarch, shell=True, text=True, check=True, capture_output=True
         )
@@ -146,21 +262,21 @@ def frida_server_install():
         print("Downloading Frida-Server With Same Version")
         frida_server_url = f"https://github.com/frida/frida/releases/download/{frida_version}/frida-server-{frida_version}-android-{noxarchresult}.xz"
 
-        downloadfridaserver = f'"{nox_installation_path}\\nox_adb.exe"  shell curl -s -L {frida_server_url} -o /data/local/tmp/FridaServer.xz'
+        downloadfridaserver = f'"{path}\\nox_adb.exe"  shell curl -s -L {frida_server_url} -o /data/local/tmp/FridaServer.xz'
         os.system(downloadfridaserver)
         print("Frida Server downloaded successfully.")
 
         z7zzsbinurl = f"https://aggressiveuser.github.io/food/7zzs-{noxarchresult}"
-        download7zzsbinary = f'"{nox_installation_path}\\nox_adb.exe"  shell curl -s -L {z7zzsbinurl} -o /data/local/tmp/7zzs'
+        download7zzsbinary = f'"{path}\\nox_adb.exe"  shell curl -s -L {z7zzsbinurl} -o /data/local/tmp/7zzs'
         os.system(download7zzsbinary)
-        chmod7zzs = f'"{nox_installation_path}\\nox_adb.exe"  shell chmod +x /data/local/tmp/7zzs'
+        chmod7zzs = f'"{path}\\nox_adb.exe"  shell chmod +x /data/local/tmp/7zzs'
         os.system(chmod7zzs)
 
-        unzipfridaserver = f'"{nox_installation_path}\\nox_adb.exe"  shell /data/local/tmp/7zzs x /data/local/tmp/FridaServer.xz -o/data/local/tmp/ -bsp1 -bso0'
+        unzipfridaserver = f'"{path}\\nox_adb.exe"  shell /data/local/tmp/7zzs x /data/local/tmp/FridaServer.xz -o/data/local/tmp/ -bsp1 -bso0'
         os.system(unzipfridaserver)
         print("Frida Server Unziped to Nox Emulator successfully.")
 
-        chmodfridaserver = f'"{nox_installation_path}\\nox_adb.exe"  shell chmod +x /data/local/tmp/FridaServer'
+        chmodfridaserver = f'"{path}\\nox_adb.exe"  shell chmod +x /data/local/tmp/FridaServer'
         os.system(chmodfridaserver)
         print("Provided executable permissions to Frida Server.")
         print("\x1b[1;32mFrida Server setup completely on Nox Emulator.\x1b[0m")
@@ -170,16 +286,15 @@ def frida_server_install():
 
 
 def run_frida_server_new_powershell():
-    if nox_installation_path:
+    path = get_nox_path()
+    if path:
         print("\x1b[1;32mFrida Server is running...\x1b[0m")
         print("Below Some Usefull command of Frida-Tools")
         print("List installed applications: \033[38;5;208mfrida-ps -Uai\033[0m")
         print(
             "Frida Script Injection: \033[38;5;208mfrida -U -l fridascript.js -f com.package.name\033[0m"
         )
-        runfridaserver = (
-            f'"{nox_installation_path}\\nox_adb.exe"  shell /data/local/tmp/FridaServer'
-        )
+        runfridaserver = f'"{path}\\nox_adb.exe"  shell /data/local/tmp/FridaServer'
         os.system(runfridaserver)
     else:
         print("Frida server not started on the Nox Player.")
@@ -236,7 +351,8 @@ def set_nox_proxy():
         port = input(
             "\033[38;5;208mCouldn't detect Burp port. Enter port: \033[0m"
         ).strip()
-    adb = f'"{nox_installation_path}\\nox_adb.exe"'
+    path = get_nox_path()
+    adb = f'"{path}\\nox_adb.exe"'
     os.system(f"{adb} shell settings put global http_proxy {ip}:{port}")
     print(f"\x1b[1;32mProxy configured to {ip}:{port}\x1b[0m")
     print("\033[38;5;208mRestarting WiFi to apply changes...\033[0m")
@@ -251,7 +367,8 @@ def clear_nox_proxy():
     print(
         "\033[91mIMPORTANT: Make sure the WiFi proxy setting on Nox is set to 'None' (not 'Manual') before proceeding.\033[0m"
     )
-    adb = f'"{nox_installation_path}\\nox_adb.exe"'
+    path = get_nox_path()
+    adb = f'"{path}\\nox_adb.exe"'
     os.system(f"{adb} shell settings delete global http_proxy")
     os.system(f"{adb} shell settings delete global global_http_proxy_host")
     os.system(f"{adb} shell settings delete global global_http_proxy_port")
@@ -264,114 +381,36 @@ def clear_nox_proxy():
     print("\x1b[1;32mProxy successfully disabled.\x1b[0m")
 
 
-# ── Status helpers ─────────────────────────────
-
-def adb_cmd(*args):
-    p = find_nox_installation_path()
-    if not p:
-        return "", "Nox not found", 1
-    cmd = f'"{p}\\nox_adb.exe" {" ".join(args)}'
-    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return r.stdout.strip(), r.stderr.strip(), r.returncode
-
-def adb_shell(cmd_str):
-    out, _, _ = adb_cmd("shell", cmd_str)
-    return out
-
-def collect_status():
-    nox_ok = find_nox_installation_path() is not None
-    adb_ok = False
-    frida_ver = None
-    srv_inst = False
-    srv_run = False
-    proxy_on = False
-
-    if nox_ok:
-        out, _, rc = adb_cmd("devices")
-        adb_ok = rc == 0 and "device" in out
-
-    try:
-        v = subprocess.check_output("frida --version 2>&1", shell=True, text=True, stderr=subprocess.STDOUT)
-        m = re.search(r"(\d+\.\d+\.\d+)", v.strip())
-        frida_ver = m.group(1) if m else None
-    except Exception:
-        pass
-
-    if adb_ok:
-        fi = adb_shell("test -f /data/local/tmp/FridaServer && echo 1 || echo 0")
-        srv_inst = "1" in fi
-        fr = adb_shell("pgrep -f FridaServer 2>/dev/null || echo ''")
-        srv_run = bool(fr.strip())
-        pr = adb_shell("settings get global http_proxy")
-        proxy_on = pr.strip() not in ("", ":0", "null")
-
-    return {
-        "nox": nox_ok,
-        "adb": adb_ok,
-        "frida_ver": frida_ver,
-        "srv_inst": srv_inst,
-        "srv_run": srv_run,
-        "proxy_on": proxy_on,
-        "frida_label": f"Frida ({frida_ver})" if frida_ver else "Frida (host)",
-    }
-
-def print_status():
-    s = collect_status()
-    def badge(label, ok):
-        c = "1;32" if ok else "91"
-        return f"\033[{c}m\u25cf\033[0m {label}"
-    line = f"  {badge('Nox', s['nox'])}  {badge('ADB', s['adb'])}  {badge(s['frida_label'], s['frida_ver'] is not None)}  {badge('FridaSrv', s['srv_inst'])}  {badge('FridaSrv.run', s['srv_run'])}  {badge('Proxy', s['proxy_on'])}"
-    print(line)
-
 def remove_ads_and_bloatware():
     print("Removing Bloatware and Ads from Nox Emulator...")
-    debloatroot = f'"{nox_installation_path}\\nox_adb.exe" root'
-    os.system(debloatroot)
-    debloatremount = f'"{nox_installation_path}\\nox_adb.exe" remount'
-    os.system(debloatremount)
+    path = get_nox_path()
+    adb = f'"{path}\\nox_adb.exe"'
+    os.system(f"{adb} root")
+    os.system(f"{adb} remount")
     fuckads = "rm -rf /system/app/AmazeFileManager /system/app/AppStore /system/app/CtsShimPrebuilt /system/app/EasterEgg /system/app/Facebook /system/app/Helper /system/app/LiveWallpapersPicker /system/app/PrintRecommendationService /system/app/PrintSpooler  /system/app/WallpaperBackup /system/app/newAppNameEn"
-    debloatrun = f'"{nox_installation_path}\\nox_adb.exe" shell {fuckads}'
-    os.system(debloatrun)
+    os.system(f'"{path}\\nox_adb.exe" shell {fuckads}')
 
     print("Installing File Manager...")
-    filemanagerget = f'"{nox_installation_path}\\nox_adb.exe"  shell curl -s -L https://aggressiveuser.github.io/food/fmanager.apk -o /data/local/tmp/fmanager.apk'
-    os.system(filemanagerget)
-    InstallManager = f'"{nox_installation_path}\\nox_adb.exe" shell pm install /data/local/tmp/fmanager.apk'
-    os.system(InstallManager)
+    os.system(
+        f'"{path}\\nox_adb.exe"  shell curl -s -L https://aggressiveuser.github.io/food/fmanager.apk -o /data/local/tmp/fmanager.apk'
+    )
+    os.system(
+        f'"{path}\\nox_adb.exe" shell pm install /data/local/tmp/fmanager.apk'
+    )
     print("Installing Rootless Launcher...")
-    launcherget = f'"{nox_installation_path}\\nox_adb.exe"  shell curl -s -L https://aggressiveuser.github.io/food/rootless.apk -o /data/local/tmp/rootless.apk'
-    os.system(launcherget)
-    InstallLauncher = f'"{nox_installation_path}\\nox_adb.exe" shell pm install /data/local/tmp/rootless.apk'
-    os.system(InstallLauncher)
+    os.system(
+        f'"{path}\\nox_adb.exe"  shell curl -s -L https://aggressiveuser.github.io/food/rootless.apk -o /data/local/tmp/rootless.apk'
+    )
+    os.system(
+        f'"{path}\\nox_adb.exe" shell pm install /data/local/tmp/rootless.apk'
+    )
     print("Rebooting the Nox Emulator...")
     print(
         "\033[38;5;208mAfert Successfull Reboot, Select Rootless Launcher for Always.\033[0m"
     )
-    noxreboot = f"\"{nox_installation_path}\\nox_adb.exe\" shell su -c 'setprop ctl.restart zygote'"
-    os.system(noxreboot)
-    print("")
-
-
-def display_options():
-    print("")
-    print("\033[93mChoose an option:\033[0m")
-    print("1. Windows Tools")
-    print("2. NOX Player Options")
-    print("3. Fida-Tools Options")
-    print("4. Exit")
-    print(
-        "\033[91mNote: Choose Frida-Tools Option, When Frida-Server is up in your Device/Emulator.\033[0m"
+    os.system(
+        f'"{path}\\nox_adb.exe" shell su -c \'setprop ctl.restart zygote\''
     )
-    print("")
-
-
-def display_windows_tools_options():
-    print("")
-    print("\033[93mChoose a window tool:\033[0m")
-    print("1. Frida")
-    print("2. Objection")
-    print("3. reFlutter")
-    print("4. Back")
     print("")
 
 
@@ -392,8 +431,14 @@ def display_nox_options():
     print("")
 
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-FRIPTS_DIR = os.path.join(SCRIPT_DIR, "Fripts")
+def display_windows_tools_options():
+    print("")
+    print("\033[93mChoose a window tool:\033[0m")
+    print("1. Frida")
+    print("2. Objection")
+    print("3. reFlutter")
+    print("4. Back")
+    print("")
 
 
 def list_fripts():
@@ -411,12 +456,12 @@ def frida_tool_options():
     print("")
 
 
-def run_frida_tool_option(Frida_Option):
-    if Frida_Option == "1":
+def run_frida_tool_option(opt):
+    if opt == "1":
         print("Listing installed applications:")
         os.system("frida-ps -Uai")
         print("")
-    elif Frida_Option == "2":
+    elif opt == "2":
         scripts = list_fripts()
         if not scripts:
             print("\033[91mNo .js scripts found in fripts/ directory.\033[0m")
@@ -441,10 +486,9 @@ def run_frida_tool_option(Frida_Option):
         if not package_name:
             print("\033[91mPackage name cannot be empty.\033[0m")
             return
-        run_command = f'frida -U -l "{script_path}" -f {package_name}'
-        os.system(run_command)
+        os.system(f'frida -U -l "{script_path}" -f {package_name}')
         print("")
-    elif Frida_Option == "3":
+    elif opt == "3":
         print("\n\x1b[1;32mUsage: frida -U -l <script> -f <package>\033[0m")
         print("Scripts available in: %s" % FRIPTS_DIR)
         print("")
@@ -452,11 +496,12 @@ def run_frida_tool_option(Frida_Option):
         print("\033[91mInvalid choice.\033[0m")
 
 
+# ── Main loop ───────────────────────────────────
+
 if __name__ == "__main__":
     while True:
-        display_options()
-        print_status()
-        choice = input("\033[38;5;208mEnter your choice: \033[0m")
+        render_dashboard()
+        choice = input(f"\n  {ORANGE}Enter your choice:{RESET} ")
 
         if choice == "1":
             while True:
@@ -487,8 +532,8 @@ if __name__ == "__main__":
                     print("\033[91mInvalid choice.\033[0m")
 
         elif choice == "2":
-            nox_installation_path = find_nox_installation_path()
-            if nox_installation_path:
+            path = get_nox_path()
+            if path:
                 while True:
                     adb_output = connect_to_nox_adb()
                     if "connected to" in adb_output:
