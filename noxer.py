@@ -493,6 +493,22 @@ def get_all_scripts(page=1):
     return local + online, total_pages
 
 
+def get_installed_apps():
+    """Return list of (name, identifier) from frida-ps -Uai JSON output."""
+    apps = []
+    try:
+        out = subprocess.check_output(
+            "frida-ps -Uai -j 2>&1", shell=True, text=True, stderr=subprocess.STDOUT
+        )
+        import json
+        data = json.loads(out)
+        for app in data:
+            apps.append((app.get("name", ""), app.get("identifier", "")))
+    except Exception:
+        pass
+    return apps
+
+
 def frida_tool_options():
     print("")
     print("\033[93mFrida-Tool Options:\033[0m")
@@ -555,12 +571,34 @@ def run_frida_tool_option(opt):
                 print("\033[91mInvalid selection.\033[0m")
                 continue
             chosen = scripts[idx - 1]
-            package_name = input(
-                "\033[38;5;208mEnter the application package name: \033[0m"
-            ).strip()
-            if not package_name:
-                print("\033[91mPackage name cannot be empty.\033[0m")
+
+            apps = get_installed_apps()
+            if apps:
+                print("\n\033[93mInstalled apps:\033[0m")
+                for i, (name, pkg) in enumerate(apps, 1):
+                    print(f"  {i:>3}. {name} (\033[38;5;208m{pkg}\033[0m)")
+                print()
+                pkg_input = input(
+                    "\033[38;5;208mEnter number or package name (empty to cancel): \033[0m"
+                ).strip()
+            else:
+                pkg_input = input(
+                    "\033[38;5;208mEnter the application package name: \033[0m"
+                ).strip()
+
+            if not pkg_input:
+                print("\033[91mCancelled.\033[0m")
                 continue
+            try:
+                app_idx = int(pkg_input) - 1
+                if 0 <= app_idx < len(apps):
+                    package_name = apps[app_idx][1]
+                else:
+                    print("\033[91mInvalid app number.\033[0m")
+                    continue
+            except ValueError:
+                package_name = pkg_input
+
             if chosen["source"] == "local":
                 script_path = os.path.join(FRIPTS_DIR, chosen["path"])
                 os.system(f'frida -U -l "{script_path}" -f {package_name}')
