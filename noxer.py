@@ -264,6 +264,65 @@ def clear_nox_proxy():
     print("\x1b[1;32mProxy successfully disabled.\x1b[0m")
 
 
+# ── Status helpers ─────────────────────────────
+
+def adb_cmd(*args):
+    p = find_nox_installation_path()
+    if not p:
+        return "", "Nox not found", 1
+    cmd = f'"{p}\\nox_adb.exe" {" ".join(args)}'
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    return r.stdout.strip(), r.stderr.strip(), r.returncode
+
+def adb_shell(cmd_str):
+    out, _, _ = adb_cmd("shell", cmd_str)
+    return out
+
+def collect_status():
+    nox_ok = find_nox_installation_path() is not None
+    adb_ok = False
+    frida_ver = None
+    srv_inst = False
+    srv_run = False
+    proxy_on = False
+
+    if nox_ok:
+        out, _, rc = adb_cmd("devices")
+        adb_ok = rc == 0 and "device" in out
+
+    try:
+        v = subprocess.check_output("frida --version 2>&1", shell=True, text=True, stderr=subprocess.STDOUT)
+        m = re.search(r"(\d+\.\d+\.\d+)", v.strip())
+        frida_ver = m.group(1) if m else None
+    except Exception:
+        pass
+
+    if adb_ok:
+        fi = adb_shell("test -f /data/local/tmp/FridaServer && echo 1 || echo 0")
+        srv_inst = "1" in fi
+        fr = adb_shell("pgrep -f FridaServer 2>/dev/null || echo ''")
+        srv_run = bool(fr.strip())
+        pr = adb_shell("settings get global http_proxy")
+        proxy_on = pr.strip() not in ("", ":0", "null")
+
+    return {
+        "nox": nox_ok,
+        "adb": adb_ok,
+        "frida_ver": frida_ver,
+        "srv_inst": srv_inst,
+        "srv_run": srv_run,
+        "proxy_on": proxy_on,
+        "frida_label": f"Frida ({frida_ver})" if frida_ver else "Frida (host)",
+    }
+
+def print_status():
+    s = collect_status()
+    def badge(label, ok):
+        c = "1;32" if ok else "91"
+        return f"\033[{c}m\u25cf\033[0m {label}"
+    line = f"  {badge('Nox', s['nox'])}  {badge('ADB', s['adb'])}  {badge(s['frida_label'], s['frida_ver'] is not None)}  {badge('FridaSrv', s['srv_inst'])}  {badge('FridaSrv.run', s['srv_run'])}  {badge('Proxy', s['proxy_on'])}"
+    print(line)
+
 def remove_ads_and_bloatware():
     print("Removing Bloatware and Ads from Nox Emulator...")
     debloatroot = f'"{nox_installation_path}\\nox_adb.exe" root'
@@ -396,6 +455,7 @@ def run_frida_tool_option(Frida_Option):
 if __name__ == "__main__":
     while True:
         display_options()
+        print_status()
         choice = input("\033[38;5;208mEnter your choice: \033[0m")
 
         if choice == "1":
