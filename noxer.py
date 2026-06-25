@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+import json
 from urllib.parse import quote
 from urllib.request import urlopen, Request
 
@@ -525,14 +526,69 @@ def get_all_scripts(page=1, search=""):
     return local + online, total_pages
 
 
+
+FAVORITES_FILE = os.path.join(SCRIPT_DIR, "favorites.json")
+
+def load_favorites():
+    try:
+        with open(FAVORITES_FILE) as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            # migrate old format (list of strings or list of dicts)
+            if isinstance(data, list):
+                favs = {}
+                for entry in data:
+                    if isinstance(entry, dict):
+                        k = entry.get("key", "")
+                        favs[k] = {"title": entry.get("title", ""), "source": entry.get("source", ""),
+                                   "slug": entry.get("slug", ""), "path": entry.get("path", "")}
+                    elif isinstance(entry, str) and ":" in entry:
+                        prefix, val = entry.split(":", 1)
+                        if prefix == "local":
+                            title = val.replace(".js", "")
+                            favs[entry] = {"title": title, "source": "local", "path": val, "slug": ""}
+                        else:
+                            title = val.split("/")[-1].replace("-", " ").title()
+                            favs[entry] = {"title": title, "source": "codeshare", "slug": val, "path": ""}
+                if favs:
+                    save_favorites(favs)
+                return favs
+            return {}
+    except Exception:
+        return {}
+
+def save_favorites(favs):
+    try:
+        with open(FAVORITES_FILE, "w") as f:
+            json.dump(favs, f, indent=2)
+    except Exception:
+        pass
+
+def fav_key(script):
+    if script["source"] == "local":
+        return f"local:{script['path']}"
+    return f"codeshare:{script['slug']}"
+
+def toggle_favorite(script, favs):
+    k = fav_key(script)
+    if k in favs:
+        del favs[k]
+    else:
+        favs[k] = {"title": script["title"], "source": script["source"],
+                     "slug": script.get("slug", ""), "path": script.get("path", "")}
+    save_favorites(favs)
+    return k in favs
+    save_favorites(favs)
+    return k in favs
+
+
 def get_installed_apps():
-    """Return list of (name, identifier) from frida-ps -Uai JSON output."""
     apps = []
     try:
         out = subprocess.check_output(
             "frida-ps -Uai -j 2>&1", shell=True, text=True, stderr=subprocess.STDOUT
         )
-        import json
         data = json.loads(out)
         for app in data:
             apps.append((app.get("name", ""), app.get("identifier", "")))
@@ -559,6 +615,7 @@ def run_frida_tool_option(opt):
     elif opt == "2":
         page = 1
         search = ""
+        favs = load_favorites()
         while True:
             scripts, total_pages = get_all_scripts(page, search)
             if not scripts:
@@ -568,19 +625,36 @@ def run_frida_tool_option(opt):
                     print("\033[91mNo scripts available.\033[0m")
                     return
 
+            # Favorites from storage (always shown regardless of page)
+            fav_entries = []
+            for k, entry in favs.items():
+                fav_entries.append({
+                    "title": entry["title"], "source": entry["source"],
+                    "slug": entry.get("slug", ""), "path": entry.get("path", "")
+                })
+            local_nf = [s for s in scripts if s["source"] == "local" and fav_key(s) not in favs]
+            online_nf = [s for s in scripts if s["source"] == "codeshare" and fav_key(s) not in favs]
+            grouped = local_nf + fav_entries + online_nf
+
             print(f"\n\033[93mScripts{' [' + search + ']' if search else ''}:\033[0m")
-            local_show = [s for s in scripts if s["source"] == "local"]
-            online_show = [s for s in scripts if s["source"] == "codeshare"]
-            if local_show:
+            idx = 1
+            if local_nf:
                 print(f"  \033[92m-- Local (Fripts/) --\033[0m")
-                for i, s in enumerate(local_show, 1):
-                    print(f"  {i:>3}. {s['title']}")
-            if online_show:
+                for s in local_nf:
+                    print(f"  {idx:>3}. {s['title']}")
+                    idx += 1
+            if fav_entries:
+                print(f"  \033[93m-- Favorites --\033[0m")
+                for s in fav_entries:
+                    annot = "" if s["source"] == "local" else f" (\033[38;5;208m{s['slug']}\033[0m)"
+                    print(f"  {idx:>3}. \033[93m\u2605\033[0m {s['title']}{annot}")
+                    idx += 1
+            if online_nf:
                 label = f"Online (CodeSearch: {search})" if search else f"Online (CodeShare page {page}/{total_pages})"
                 print(f"  \033[96m-- {label} --\033[0m")
-                offset = len(local_show)
-                for i, s in enumerate(online_show, offset + 1):
-                    print(f"  {i:>3}. {s['title']} (\033[38;5;208m{s['slug']}\033[0m)")
+                for s in online_nf:
+                    print(f"  {idx:>3}. {s['title']} (\033[38;5;208m{s['slug']}\033[0m)")
+                    idx += 1
             print()
             nav = ""
             if page > 1:
@@ -592,7 +666,7 @@ def run_frida_tool_option(opt):
                 if search:
                     print("  c. Clear search")
                 print()
-            inp = input("\033[38;5;208m[num, search, n, p, c, b]: \033[0m").strip()
+            inp = input("\033[38;5;208m[num, f, search, n, p, c, b]: \033[0m").strip()
             if inp == "b":
                 break
             if inp in ("n", "next"):
@@ -608,15 +682,27 @@ def run_frida_tool_option(opt):
             if inp == "c":
                 search = ""
                 continue
+            if inp == "f":
+                f_inp = input("  Toggle favorite for script number: ").strip()
+                try:
+                    f_idx = int(f_inp) - 1
+                    if 0 <= f_idx < len(grouped):
+                        toggle_favorite(grouped[f_idx], favs)
+                        favs = load_favorites()
+                    else:
+                        print("\033[91mInvalid.\033[0m")
+                except ValueError:
+                    pass
+                continue
             try:
-                idx = int(inp)
+                idx = int(inp) - 1
             except ValueError:
                 search = inp
                 continue
-            if idx < 1 or idx > len(scripts):
+            if idx < 0 or idx >= len(grouped):
                 print("\033[91mInvalid selection.\033[0m")
                 continue
-            chosen = scripts[idx - 1]
+            chosen = grouped[idx]
 
             apps = get_installed_apps()
             if apps:
