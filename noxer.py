@@ -84,7 +84,7 @@ def check_frida_server_installed():
 def check_frida_server_running():
     if not check_adb_connected():
         return False
-    out = adb_shell("pgrep -f FridaServer 2>/dev/null || echo ''")
+    out = adb_shell("ps | grep -i '[F]ridaServer' || echo ''")
     return bool(out.strip())
 
 
