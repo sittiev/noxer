@@ -446,11 +446,47 @@ def list_fripts():
     return sorted(scripts)
 
 
+def fetch_codeshare_scripts():
+    """Scrape https://codeshare.frida.re/browse for online scripts."""
+    scripts = []
+    try:
+        resp = requests.get("https://codeshare.frida.re/browse", timeout=10)
+        if resp.status_code != 200:
+            return scripts
+        html = resp.text
+        pattern = re.compile(
+            r'<h2><a href="https://codeshare\.frida\.re/@([^/]+)/([^"/]+)/">([^<]+)</a></h2>'
+        )
+        for m in pattern.finditer(html):
+            author = m.group(1)
+            slug = m.group(2)
+            title = m.group(3)
+            scripts.append({
+                "title": title,
+                "author": author,
+                "slug": f"{author}/{slug}",
+                "source": "codeshare",
+            })
+    except Exception:
+        pass
+    return scripts
+
+
+def get_all_scripts():
+    """Combine local Fripts/ scripts with online CodeShare (skip duplicates)."""
+    local = [{"title": s.replace(".js", ""), "path": s, "source": "local"}
+             for s in list_fripts()]
+    local_titles = {s["title"].lower() for s in local}
+    online = [s for s in fetch_codeshare_scripts()
+              if s["title"].lower() not in local_titles]
+    return local + online
+
+
 def frida_tool_options():
     print("")
     print("\033[93mFrida-Tool Options:\033[0m")
     print("1. List installed applications (frida-ps -Uai)")
-    print("2. Inject script from fripts/")
+    print("2. Inject script (local Fripts/ + online CodeShare)")
     print("3. Manual: frida -U -l <script> -f <package>")
     print("4. Back")
     print("")
@@ -462,13 +498,18 @@ def run_frida_tool_option(opt):
         os.system("frida-ps -Uai")
         print("")
     elif opt == "2":
-        scripts = list_fripts()
+        scripts = get_all_scripts()
         if not scripts:
-            print("\033[91mNo .js scripts found in fripts/ directory.\033[0m")
+            print("\033[91mNo scripts available.\033[0m")
             return
         print("\n\033[93mAvailable scripts:\033[0m")
         for i, s in enumerate(scripts, 1):
-            print(f"  {i}. {s}")
+            src = s["source"]
+            tag = f"\033[92m[LOCAL]\033[0m" if src == "local" else f"\033[96m[ONLINE]\033[0m"
+            label = s["title"]
+            if src == "codeshare":
+                label += f" (\033[38;5;208m{s['slug']}\033[0m)"
+            print(f"  {i}. {tag} {label}")
         print("")
         try:
             idx = int(input("\033[38;5;208mSelect script number: \033[0m"))
@@ -479,17 +520,21 @@ def run_frida_tool_option(opt):
             print("\033[91mInvalid input.\033[0m")
             return
         chosen = scripts[idx - 1]
-        script_path = os.path.join(FRIPTS_DIR, chosen)
         package_name = input(
             "\033[38;5;208mEnter the application package name: \033[0m"
         ).strip()
         if not package_name:
             print("\033[91mPackage name cannot be empty.\033[0m")
             return
-        os.system(f'frida -U -l "{script_path}" -f {package_name}')
+        if chosen["source"] == "local":
+            script_path = os.path.join(FRIPTS_DIR, chosen["path"])
+            os.system(f'frida -U -l "{script_path}" -f {package_name}')
+        else:
+            os.system(f"frida -U --codeshare {chosen['slug']} -f {package_name}")
         print("")
     elif opt == "3":
         print("\n\x1b[1;32mUsage: frida -U -l <script> -f <package>\033[0m")
+        print("  Or: frida -U --codeshare author/name -f <package>")
         print("Scripts available in: %s" % FRIPTS_DIR)
         print("")
     else:
