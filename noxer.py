@@ -44,7 +44,7 @@ def adb_cmd(*args):
 
 
 def adb_shell(cmd_str):
-    out, _, _ = adb_cmd("shell", cmd_str)
+    out, _, _ = adb_cmd("shell", f'"{cmd_str}"')
     return out
 
 
@@ -84,8 +84,11 @@ def check_frida_server_installed():
 def check_frida_server_running():
     if not check_adb_connected():
         return False
-    out = adb_shell("ps | grep -i '[F]ridaServer' || echo ''")
-    return bool(out.strip())
+    out = adb_shell("ps -A | grep -c FridaServer 2>/dev/null || echo 0")
+    try:
+        return int(out.strip()) > 0
+    except ValueError:
+        return False
 
 
 def check_proxy():
@@ -287,17 +290,24 @@ def frida_server_install():
 
 def run_frida_server_new_powershell():
     path = get_nox_path()
-    if path:
-        print("\x1b[1;32mFrida Server is running...\x1b[0m")
-        print("Below Some Usefull command of Frida-Tools")
-        print("List installed applications: \033[38;5;208mfrida-ps -Uai\033[0m")
-        print(
-            "Frida Script Injection: \033[38;5;208mfrida -U -l fridascript.js -f com.package.name\033[0m"
-        )
-        runfridaserver = f'"{path}\\nox_adb.exe"  shell /data/local/tmp/FridaServer'
-        os.system(runfridaserver)
-    else:
+    if not path:
         print("Frida server not started on the Nox Player.")
+        return
+    subprocess.Popen(
+        f'"{path}\\nox_adb.exe" shell "/data/local/tmp/FridaServer &"',
+        shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    print("\x1b[1;32mFrida Server started in background.\x1b[0m")
+
+
+def stop_frida_server():
+    out = adb_shell("ps -A | grep FridaServer | awk '{print $2}'")
+    if not out.strip():
+        print("\033[91mFrida Server is not running.\033[0m")
+        return
+    for pid in out.strip().splitlines():
+        adb_shell(f"kill {pid.strip()}")
+    print("\x1b[1;32mFrida Server stopped.\x1b[0m")
 
 
 def get_local_ip():
@@ -419,15 +429,13 @@ def display_nox_options():
     print("\033[93mNox Player options:\033[0m")
     print("1. Remove Ads From Nox emulator")
     print("2. Install Frida Server")
-    print("3. Run Frida Server")
-    print("4. ADB Shell from NOX")
-    print("5. Install Burpsuite Certificate")
-    print("6. Enable Proxy")
-    print("7. Disable Proxy")
-    print("8. Back")
-    print(
-        '\033[91mNote: Choose "Run Frida Server" option, When Frida-Server is installed by NOXER.\033[0m'
-    )
+    print("3. Run Frida Server (background)")
+    print("4. Stop Frida Server")
+    print("5. ADB Shell from NOX")
+    print("6. Install Burpsuite Certificate")
+    print("7. Enable Proxy")
+    print("8. Disable Proxy")
+    print("9. Back")
     print("")
 
 
@@ -613,16 +621,18 @@ if __name__ == "__main__":
                         print("\x1b[1;32mADB Connected to Nox Emulator.\x1b[0m")
                         display_nox_options()
                         nox_choice = input("\033[38;5;208mEnter your choice: \033[0m")
-                        if nox_choice == "8":
+                        if nox_choice == "9":
                             break
-                        elif nox_choice == "7":
+                        elif nox_choice == "8":
                             clear_nox_proxy()
-                        elif nox_choice == "6":
+                        elif nox_choice == "7":
                             set_nox_proxy()
-                        elif nox_choice == "5":
+                        elif nox_choice == "6":
                             burpsuite_cacert()
-                        elif nox_choice == "4":
+                        elif nox_choice == "5":
                             open_adb_shell_from_nox()
+                        elif nox_choice == "4":
+                            stop_frida_server()
                         elif nox_choice == "3":
                             run_frida_server_new_powershell()
                         elif nox_choice == "2":
