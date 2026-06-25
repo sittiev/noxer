@@ -1,106 +1,114 @@
+<div align="center">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Nox_App_Player-Icon_and_wordmark3.png" width="300" alt="Nox Logo">
+</div>
 
+<h1 align="center">NOXER</h1>
 
-#   NOXER - Nox Emulator Power Tool <img src="https://sergoot.ru/wp-content/uploads/2021/10/Nox-App-Player-nastrojki.png" alt="Nox Logo" width="40"/>
+<div align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white"></a>
+  <a href="https://www.bignox.com/"><img src="https://img.shields.io/badge/platform-Windows-0078D6?logo=windows&logoColor=white"></a>
+  <a href="https://frida.re"><img src="https://img.shields.io/badge/Frida-17.15.3-FF4444?logo=frida&logoColor=white"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow"></a>
+</div>
 
-Automate your Android penetration testing lab setup using Nox Emulator. Noxer is a powerful Python script designed for automating Android penetration testing tasks within the Nox Player emulator. It simplifies setup, enhances stability, manages Frida Server, removes unwanted bloatware, integrates BurpSuite certificates, and much more!
+---
 
-## 👋 Connect with me
+## Why
 
-[![LinkedIn](https://img.shields.io/badge/-LinkedIn-blue?style=flat-square&logo=Linkedin&logoColor=white&link=https://www.linkedin.com/in/AggressiveUser/)](https://www.linkedin.com/in/AggressiveUser/) [![Hack The Box](https://img.shields.io/badge/-Hack%20The%20Box-green?style=flat-square&logo=hack-the-box&logoColor=white&link=https://app.hackthebox.com/profile/17569)](https://app.hackthebox.com/profile/17569) [![GitHub](https://img.shields.io/badge/-GitHub-black?style=flat-square&logo=github&link=https://github.com/AggressiveUser)](https://github.com/AggressiveUser) [![Twitter](https://img.shields.io/badge/-Twitter-blue?style=flat-square&logo=twitter&logoColor=white&link=https://twitter.com/AggressiveUserX)](https://twitter.com/AggressiveUserX) [![Telegram](https://img.shields.io/badge/-Telegram-blue?style=flat-square&logo=telegram&logoColor=white&link=https://t.me/AggressiveUser)](https://t.me/AggressiveUser) [![Email](https://img.shields.io/badge/-Email-red?style=flat-square&logo=Microsoft&logoColor=white&link=mailto:AggressiveUser@OutLook.com)](mailto:AggressiveUser@OutLook.com)
+Nox is great for reverse engineering. But every session you: enable root, install Frida server, push Burp CA, toggle proxy, debloat garbage. That's 15 minutes of clicking per session.
 
-## 🚀 Features
-- **Effortless Automation ⚙️:**
-  - Automate the setup and configuration of your Android penetration testing lab with ease.
-- **Stable ADB Connections 📱:**
-  - Enhances ADB stability, preventing frequent disconnections and ensuring a more seamless testing experience.
-- **Manage Frida Server ⚡:**
-  Quickly install and launch Frida Server on the Nox Emulator, simplifying dynamic app analysis setup.
-  - Install Frida Server
-  - Run Frida Server
-- **Ad and Bloatware Removal 🚯:**
-  - Automate the removal of ads and unwanted pre-installed applications from the Nox Emulator, ensuring a clean environment for testing.
-- **Interactive Command-Line Interface 💬:**
-  - Enjoy an intuitive and user-friendly interface for managing your Android penetration testing lab.
-- **BurpSuite Certificate Integration🔐:**
-  - Seamlessly install and configure BurpSuite certificates for secure communication during penetration testing.
-- **Windows Tools Management 💻:**
- Easily install or verify the status of essential pentesting tools (Frida, Objection, reFlutter) on your Windows machine.
-  - Frida
-  - Objection
-  - reFlutter
-- **Frida-Tool Options 🛠️:**
-   Choose from various Frida-based options, including handling SSL pinning, root check bypass, custom script injection, and more.
-  -  List installed applications
-  - SSL Pinning Bypass
-  - Root Check Bypass
-  - SSL Pinning and Root Check Bypass
+Noxer does it in one command. Dashboard shows live status of ADB, Frida, proxy. No entering Android UI.
 
-- **Flexible Options 🛠️:**
-  - Select from a range of functionalities, including running Frida Server, opening an ADB shell, and more, within an interactive menu system.
-- **Happy Android Pentesting 🕵️‍♂️:**
-  - Explore, test, and analyze Android applications with confidence using this all-in-one automation script.
+## Dashboard
 
-## ⚙️ Pre-requisites
+```
+  ┌────────────────────────────────────────────────┐
+  │  NOXER v1.22β                                  │
+  │  ● Nox    ● ADB    ● Frida (host) 17.15.3      │
+  │  ● FridaSrv    ● FridaSrv run    ○ Proxy        │
+  │  ──────────────────────────────────────────────  │
+  │  1. Windows Tools                                │
+  │  2. NOX Player Options                           │
+  │  3. Frida-Tools Options                          │
+  │  4. Exit                                         │
+  └────────────────────────────────────────────────┘
+```
 
-Before you begin, ensure you have the following installed on your system:
+6 live status badges. Green dot = OK. Red dot = offline. Checks every render.
 
-- **Python 3.x** 🐍
--  **Nox Player**  <img src=https://upload.wikimedia.org/wikipedia/commons/b/bc/Nox_App_Player_Icon3.png width=18>
+## Features
 
+| | Category | What it does |
+|---|---|---|
+| <img src="https://api.iconify.design/bx/bx-trash.svg" width="18" height="18"> | **Debloat** | rm -rf system bloat (AppStore, Facebook, Launcher). Install Rootless Launcher + File Manager. |
+| <img src="https://api.iconify.design/bx/bx-cloud-download.svg" width="18" height="18"> | **Frida Server** | Auto-download matching version. Decompress via 7zzs. `chmod +x` & run. |
+| <img src="https://api.iconify.design/bx/bx-bug.svg" width="18" height="18"> | **Frida stack** | frida-tools, objection, reFlutter. 32 community hooks in Fripts/. |
+| <img src="https://api.iconify.design/bx/bx-check-shield.svg" width="18" height="18"> | **Burp CA** | Fetch `/cert` from proxy, convert DER→PEM→Android hash, push to system trust store. |
+| <img src="https://api.iconify.design/bx/bx-wifi.svg" width="18" height="18"> | **Proxy** | Detect local IP + Burp port. `settings put global http_proxy`. `svc wifi toggle` (works on Nox VirtWifi). |
+| <img src="https://api.iconify.design/bx/bx-terminal.svg" width="18" height="18"> | **ADB shell** | `nox_adb.exe shell -t su`. Direct root shell to emulator. |
+| <img src="https://api.iconify.design/bx/bx-code-block.svg" width="18" height="18"> | **Script picker** | List 32 .js scripts from Fripts/, pick one, inject via `frida -U -l`. |
 
-## 📦 Installation
-Before running NOXER, ensure you have the required dependencies installed. Follow these steps:
+## Pre-requisites
 
-1. Clone this repository to your local machine.
-    ```
-    git clone https://github.com/AggressiveUser/noxer.git
-    ```
+- **Windows** (Nox runs here)
+- **Nox Player** installed & running
+- **Python 3.x** + pip
 
-2. Navigate to the project directory.
-    ```
-    cd noxer
-    ```
+## Quick Start
 
-3. Install the dependencies from the requirements.txt file using pip.
-    ```
-    pip install -r requirements.txt
-    ```
+```bash
+git clone https://github.com/sittiev/noxer.git
+cd noxer
+pip install -r requirements.txt
+python noxer.py
+```
 
-4. You are now set to run the NOXER script.
-    ```
-    python noxer.py
-    ```
+## Usage
 
-Happy Android pentesting with Nox Emulator! 📱🔒🐍
+**Step 1** — Open Nox, pick Android version.
 
-    
-## 📝 Usage
+<img src="https://i.ibb.co/xDpNZLj/STEP-1.png" alt="Step 1" border="0">
 
- **Step: 1**  Open **Nox Asst** and choose android version of your choice.
-<img src="https://i.ibb.co/xDpNZLj/STEP-1.png" alt="STEP-1" border="0"/>
+**Step 2** — Click Settings.
 
-**Step: 2** Click on Settings ⚙️
+<img src="https://i.ibb.co/W3zdv96/STEP-2.png" alt="Step 2" border="0">
 
-<img src="https://i.ibb.co/W3zdv96/STEP-2.png" alt="STEP-2" border="0" />
+**Step 3** — General tab → check **Root**.
 
-**Step: 3** Navigate to **General** tab and check **Root**
-<img src="https://i.ibb.co/pLhx6z4/STEP-3.png" alt="STEP-3" border="0" />
+<img src="https://i.ibb.co/pLhx6z4/STEP-3.png" alt="Step 3" border="0">
 
-**Step: 4** Save Setting and Run the emulator.
-<img src="https://i.ibb.co/Ln3VvqP/STEP-4.png" alt="STEP-4" border="0" />
+**Step 4** — Save & run emulator.
 
-If you face error **No VT Service Detected**. Click here to [Fix Virtualization / VT Service](https://aggressiveuser.github.io/OnlineTools/FixVirtualization/)
-<img src="https://i.ibb.co/vkHW4bj/image.png" width=300 alt="image" border="0" />
+<img src="https://i.ibb.co/Ln3VvqP/STEP-4.png" alt="Step 4" border="0">
 
-**Step: 5** Run **NOXER** script which will automatically sync with running **NOX emulator**.
-<img src="https://i.ibb.co/sRPFS80/STEP-5.png" alt="STEP-5" border="0" />
+No VT error? [Fix Virtualization](https://aggressiveuser.github.io/OnlineTools/FixVirtualization/)
 
-**After running the script, you'll be presented with a menu to choose from various options  🫠**
+<img src="https://i.ibb.co/vkHW4bj/image.png" width="300" alt="VT error">
 
-## 🤝 Contributing
+**Step 5** — Run NOXER. Auto-syncs with running Nox.
 
-Contributions are welcome! If you'd like to enhance the functionality of this tool, please submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+<img src="https://i.ibb.co/sRPFS80/STEP-5.png" alt="Step 5" border="0">
 
-## 📄 License
+## Menus
 
-This project is licensed under the MIT License - see the [LICENSE]() file for details.
+**1. Windows Tools** — Install/verify frida-tools, objection, reFlutter.
+
+**2. NOX Player Options** — Debloat, install/run Frida Server, ADB shell, Burp CA, proxy on/off.
+
+**3. Frida-Tools Options** — List apps via `frida-ps -Uai`, pick script from Fripts/ (32 available), inject to target package.
+
+## Fripts
+
+32 community hooks in `Fripts/`:
+
+| | Category | Scripts |
+|---|---|---|
+| <img src="https://api.iconify.design/bx/bx-lock-alt.svg" width="18" height="18"> | SSL pinning | universal-android-ssl-pinning-bypass (x2), frida-multiple-unpinning |
+| <img src="https://api.iconify.design/bx/bx-lock-open-alt.svg" width="18" height="18"> | Root bypass | rootbeerultimate, fridantiroot, hideroot, scottyab-root-bypass (7 more) |
+| <img src="https://api.iconify.design/bx/bx-layer.svg" width="18" height="18"> | Combined | universal-robust-advanced-root-ssl-bypass, pintooR, ssl-and-root-bypass |
+| <img src="https://api.iconify.design/bx/bx-key.svg" width="18" height="18"> | Crypto | intercept-android-apk-crypto-operations, aesinfo, okhttp3-interceptor |
+| <img src="https://api.iconify.design/bx/bx-search-alt.svg" width="18" height="18"> | Detection | anti-frida-bypass, root-and-emulator-detection-bypass, multiple-root-detection-bypass |
+
+## License
+
+MIT
