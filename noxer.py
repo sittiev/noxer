@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+from urllib.parse import quote
 from urllib.request import urlopen, Request
 
 import psutil
@@ -483,12 +484,43 @@ def fetch_codeshare_scripts(page=1):
     return scripts, total_pages
 
 
-def get_all_scripts(page=1):
-    """Combine local + online CodeShare scripts for given page."""
+def fetch_codeshare_search(query):
+    """Scrape CodeShare search results. Returns list of scripts."""
+    scripts = []
+    try:
+        url = f"https://codeshare.frida.re/search/?query={quote(query)}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return scripts
+        html = resp.text
+        pat = re.compile(
+            r'<h2><a href="https://codeshare\.frida\.re/@([^/]+)/([^"/]+)/">([^<]+)</a></h2>'
+        )
+        for m in pat.finditer(html):
+            author = m.group(1)
+            slug = m.group(2)
+            title = m.group(3)
+            scripts.append({
+                "title": title, "author": author,
+                "slug": f"{author}/{slug}", "source": "codeshare",
+            })
+    except Exception:
+        pass
+    return scripts
+
+
+def get_all_scripts(page=1, search=""):
+    """Combine local + online CodeShare scripts for given page/search."""
     local = [{"title": s.replace(".js", ""), "path": s, "source": "local"}
              for s in list_fripts()]
+    if search:
+        local = [s for s in local if search.lower() in s["title"].lower()]
     local_titles = {s["title"].lower() for s in local}
-    online, total_pages = fetch_codeshare_scripts(page)
+    if search:
+        online = fetch_codeshare_search(search)
+        total_pages = 1
+    else:
+        online, total_pages = fetch_codeshare_scripts(page)
     online = [s for s in online if s["title"].lower() not in local_titles]
     return local + online, total_pages
 
@@ -526,46 +558,60 @@ def run_frida_tool_option(opt):
         print("")
     elif opt == "2":
         page = 1
+        search = ""
         while True:
-            scripts, total_pages = get_all_scripts(page)
+            scripts, total_pages = get_all_scripts(page, search)
             if not scripts:
-                print("\033[91mNo scripts available.\033[0m")
-                return
-            num_local = len(list_fripts())
-            print("\n\033[93mAvailable scripts:\033[0m")
-            if num_local > 0:
+                if search:
+                    print(f"\n\033[93mNo scripts match \033[96m'{search}'\033[0m")
+                else:
+                    print("\033[91mNo scripts available.\033[0m")
+                    return
+
+            print(f"\n\033[93mScripts{' [' + search + ']' if search else ''}:\033[0m")
+            local_show = [s for s in scripts if s["source"] == "local"]
+            online_show = [s for s in scripts if s["source"] == "codeshare"]
+            if local_show:
                 print(f"  \033[92m-- Local (Fripts/) --\033[0m")
-                for i, s in enumerate(scripts[:num_local], 1):
+                for i, s in enumerate(local_show, 1):
                     print(f"  {i:>3}. {s['title']}")
-            online_slice = scripts[num_local:]
-            if online_slice:
-                print(f"  \033[96m-- Online (CodeShare page {page}/{total_pages}) --\033[0m")
-                for i, s in enumerate(online_slice, num_local + 1):
+            if online_show:
+                label = f"Online (CodeSearch: {search})" if search else f"Online (CodeShare page {page}/{total_pages})"
+                print(f"  \033[96m-- {label} --\033[0m")
+                offset = len(local_show)
+                for i, s in enumerate(online_show, offset + 1):
                     print(f"  {i:>3}. {s['title']} (\033[38;5;208m{s['slug']}\033[0m)")
             print()
             nav = ""
             if page > 1:
                 nav += "  p. Prev page"
-            if page < total_pages and online_slice:
+            if page < total_pages and any(s["source"] == "codeshare" for s in scripts):
                 nav += "  n. Next page" if not nav else "    n. Next page"
-            if nav:
+            if nav or search:
                 print(nav)
+                if search:
+                    print("  c. Clear search")
                 print()
-            inp = input("\033[38;5;208mSelect [num, n=next, p=prev, b=back]: \033[0m").strip().lower()
+            inp = input("\033[38;5;208m[num, search, n, p, c, b]: \033[0m").strip()
             if inp == "b":
                 break
             if inp in ("n", "next"):
                 if page < total_pages:
                     page += 1
+                    search = ""
                 continue
             if inp in ("p", "prev"):
                 if page > 1:
                     page -= 1
+                    search = ""
+                continue
+            if inp == "c":
+                search = ""
                 continue
             try:
                 idx = int(inp)
             except ValueError:
-                print("\033[91mInvalid input.\033[0m")
+                search = inp
                 continue
             if idx < 1 or idx > len(scripts):
                 print("\033[91mInvalid selection.\033[0m")
