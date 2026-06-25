@@ -446,40 +446,43 @@ def list_fripts():
     return sorted(scripts)
 
 
-def fetch_codeshare_scripts():
-    """Scrape https://codeshare.frida.re/browse for online scripts."""
+def fetch_codeshare_scripts(page=1):
+    """Scrape CodeShare browse page. Returns (scripts, total_pages)."""
     scripts = []
+    total_pages = 1
     try:
-        resp = requests.get("https://codeshare.frida.re/browse", timeout=10)
+        url = f"https://codeshare.frida.re/browse?page={page}"
+        resp = requests.get(url, timeout=10)
         if resp.status_code != 200:
-            return scripts
+            return scripts, 1
         html = resp.text
-        pattern = re.compile(
+        pat = re.compile(
             r'<h2><a href="https://codeshare\.frida\.re/@([^/]+)/([^"/]+)/">([^<]+)</a></h2>'
         )
-        for m in pattern.finditer(html):
+        for m in pat.finditer(html):
             author = m.group(1)
             slug = m.group(2)
             title = m.group(3)
             scripts.append({
-                "title": title,
-                "author": author,
-                "slug": f"{author}/{slug}",
-                "source": "codeshare",
+                "title": title, "author": author,
+                "slug": f"{author}/{slug}", "source": "codeshare",
             })
+        pages = re.findall(r'\?page=(\d+)', html)
+        if pages:
+            total_pages = max(int(p) for p in pages)
     except Exception:
         pass
-    return scripts
+    return scripts, total_pages
 
 
-def get_all_scripts():
-    """Combine local Fripts/ scripts with online CodeShare (skip duplicates)."""
+def get_all_scripts(page=1):
+    """Combine local + online CodeShare scripts for given page."""
     local = [{"title": s.replace(".js", ""), "path": s, "source": "local"}
              for s in list_fripts()]
     local_titles = {s["title"].lower() for s in local}
-    online = [s for s in fetch_codeshare_scripts()
-              if s["title"].lower() not in local_titles]
-    return local + online
+    online, total_pages = fetch_codeshare_scripts(page)
+    online = [s for s in online if s["title"].lower() not in local_titles]
+    return local + online, total_pages
 
 
 def frida_tool_options():
@@ -498,40 +501,65 @@ def run_frida_tool_option(opt):
         os.system("frida-ps -Uai")
         print("")
     elif opt == "2":
-        scripts = get_all_scripts()
-        if not scripts:
-            print("\033[91mNo scripts available.\033[0m")
-            return
-        print("\n\033[93mAvailable scripts:\033[0m")
-        for i, s in enumerate(scripts, 1):
-            src = s["source"]
-            tag = f"\033[92m[LOCAL]\033[0m" if src == "local" else f"\033[96m[ONLINE]\033[0m"
-            label = s["title"]
-            if src == "codeshare":
-                label += f" (\033[38;5;208m{s['slug']}\033[0m)"
-            print(f"  {i}. {tag} {label}")
-        print("")
-        try:
-            idx = int(input("\033[38;5;208mSelect script number: \033[0m"))
+        page = 1
+        while True:
+            scripts, total_pages = get_all_scripts(page)
+            if not scripts:
+                print("\033[91mNo scripts available.\033[0m")
+                return
+            num_local = len(list_fripts())
+            print("\n\033[93mAvailable scripts:\033[0m")
+            if num_local > 0:
+                print(f"  \033[92m-- Local (Fripts/) --\033[0m")
+                for i, s in enumerate(scripts[:num_local], 1):
+                    print(f"  {i:>3}. {s['title']}")
+            online_slice = scripts[num_local:]
+            if online_slice:
+                print(f"  \033[96m-- Online (CodeShare page {page}/{total_pages}) --\033[0m")
+                for i, s in enumerate(online_slice, num_local + 1):
+                    print(f"  {i:>3}. {s['title']} (\033[38;5;208m{s['slug']}\033[0m)")
+            print()
+            nav = ""
+            if page > 1:
+                nav += "  p. Prev page"
+            if page < total_pages and online_slice:
+                nav += "  n. Next page" if not nav else "    n. Next page"
+            if nav:
+                print(nav)
+                print()
+            inp = input("\033[38;5;208mSelect [num, n=next, p=prev, b=back]: \033[0m").strip().lower()
+            if inp == "b":
+                break
+            if inp in ("n", "next"):
+                if page < total_pages:
+                    page += 1
+                continue
+            if inp in ("p", "prev"):
+                if page > 1:
+                    page -= 1
+                continue
+            try:
+                idx = int(inp)
+            except ValueError:
+                print("\033[91mInvalid input.\033[0m")
+                continue
             if idx < 1 or idx > len(scripts):
                 print("\033[91mInvalid selection.\033[0m")
-                return
-        except ValueError:
-            print("\033[91mInvalid input.\033[0m")
-            return
-        chosen = scripts[idx - 1]
-        package_name = input(
-            "\033[38;5;208mEnter the application package name: \033[0m"
-        ).strip()
-        if not package_name:
-            print("\033[91mPackage name cannot be empty.\033[0m")
-            return
-        if chosen["source"] == "local":
-            script_path = os.path.join(FRIPTS_DIR, chosen["path"])
-            os.system(f'frida -U -l "{script_path}" -f {package_name}')
-        else:
-            os.system(f"frida -U --codeshare {chosen['slug']} -f {package_name}")
-        print("")
+                continue
+            chosen = scripts[idx - 1]
+            package_name = input(
+                "\033[38;5;208mEnter the application package name: \033[0m"
+            ).strip()
+            if not package_name:
+                print("\033[91mPackage name cannot be empty.\033[0m")
+                continue
+            if chosen["source"] == "local":
+                script_path = os.path.join(FRIPTS_DIR, chosen["path"])
+                os.system(f'frida -U -l "{script_path}" -f {package_name}')
+            else:
+                os.system(f"frida -U --codeshare {chosen['slug']} -f {package_name}")
+            print("")
+            break
     elif opt == "3":
         print("\n\x1b[1;32mUsage: frida -U -l <script> -f <package>\033[0m")
         print("  Or: frida -U --codeshare author/name -f <package>")
